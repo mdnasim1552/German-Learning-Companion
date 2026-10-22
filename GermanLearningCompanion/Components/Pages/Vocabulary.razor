@@ -1,0 +1,395 @@
+﻿@page "/vocabulary"
+
+@using GermanLearningCompanion.Models
+@using GermanLearningCompanion.Data
+@using Microsoft.EntityFrameworkCore
+
+@inject ApplicationDbContext Db
+
+<PageTitle>Vocabulary | German Learning Companion</PageTitle>
+
+<div class="container py-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2>German Vocabulary</h2>
+            <p class="text-muted">
+                Build your personal German dictionary.
+            </p>
+        </div>
+        <span class="badge bg-primary fs-6">
+            @words.Count Words
+        </span>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="alert alert-danger">
+            @errorMessage
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(successMessage))
+    {
+        <div class="alert alert-success">
+            @successMessage
+        </div>
+    }
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header">
+            <strong>
+                @(formModel.Id == 0 ? "Add New Word" : "Edit Word")
+            </strong>
+        </div>
+
+        <div class="card-body">
+            <EditForm Model="@formModel" OnValidSubmit="@SaveWord">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+
+                <div class="row g-3">
+
+                    <div class="col-md-4">
+                        <label class="form-label">German Word *</label>
+                        <InputText class="form-control"
+                                   @bind-Value="formModel.German"
+                                   placeholder="Apfel" />
+                        <ValidationMessage For="@(() => formModel.German)" />
+                    </div>
+
+                    <div class="col-md-2">
+                        <label class="form-label">Article</label>
+                        <InputSelect class="form-select"
+                                     @bind-Value="formModel.Article">
+                            <option value="">None</option>
+                            <option value="der">der</option>
+                            <option value="die">die</option>
+                            <option value="das">das</option>
+                        </InputSelect>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label">Plural</label>
+                        <InputText class="form-control"
+                                   @bind-Value="formModel.Plural"
+                                   placeholder="Äpfel" />
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label">Level</label>
+                        <InputSelect class="form-select"
+                                     @bind-Value="formModel.Level">
+                            <option value="A1">A1</option>
+                            <option value="A2">A2</option>
+                            <option value="B1">B1</option>
+                            <option value="B2">B2</option>
+                        </InputSelect>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label">English Meaning *</label>
+                        <InputText class="form-control"
+                                   @bind-Value="formModel.English"
+                                   placeholder="Apple" />
+                        <ValidationMessage For="@(() => formModel.English)" />
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label">Bengali Meaning</label>
+                        <InputText class="form-control"
+                                   @bind-Value="formModel.Bengali"
+                                   placeholder="আপেল" />
+                    </div>
+
+                    <div class="col-12">
+                        <label class="form-label">Example Sentence</label>
+                        <InputTextArea class="form-control"
+                                       @bind-Value="formModel.Example"
+                                       rows="2"
+                                       placeholder="Ich esse einen Apfel." />
+                    </div>
+
+                    <div class="col-12 d-flex gap-2">
+                        <button type="submit" class="btn btn-primary"
+                                disabled="@isSaving">
+                            @(isSaving ? "Saving..." :
+                              formModel.Id == 0 ? "Save Word" : "Update Word")
+                        </button>
+
+                        @if (formModel.Id != 0)
+                        {
+                            <button type="button"
+                                    class="btn btn-outline-secondary"
+                                    @onclick="ResetForm">
+                                Cancel Edit
+                            </button>
+                        }
+                    </div>
+
+                </div>
+            </EditForm>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+
+            <div class="row g-2 mb-3">
+                <div class="col-md-8">
+                    <input class="form-control"
+                           placeholder="Search German, English or Bengali..."
+                           @bind="searchText"
+                           @bind:event="oninput" />
+                </div>
+
+                <div class="col-md-4">
+                    <select class="form-select" @bind="selectedLevel">
+                        <option value="">All Levels</option>
+                        <option value="A1">A1</option>
+                        <option value="A2">A2</option>
+                        <option value="B1">B1</option>
+                        <option value="B2">B2</option>
+                    </select>
+                </div>
+            </div>
+
+            @if (isLoading)
+            {
+                <p>Loading vocabulary...</p>
+            }
+            else if (FilteredWords.Count == 0)
+            {
+                <div class="text-center py-4 text-muted">
+                    No vocabulary found. Add your first German word above.
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover align-middle">
+                        <thead>
+                            <tr>
+                                <th>German</th>
+                                <th>English</th>
+                                <th>Bengali</th>
+                                <th>Level</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var word in FilteredWords)
+                            {
+                                <tr @key="word.Id">
+                                    <td>
+                                        <strong>
+                                            @if (!string.IsNullOrWhiteSpace(word.Article))
+                                            {
+                                                @($"{word.Article} ")
+                                            }
+                                            @word.German
+                                        </strong>
+                                        @if (!string.IsNullOrWhiteSpace(word.Plural))
+                                        {
+                                            <div class="small text-muted">
+                                                Plural: @word.Plural
+                                            </div>
+                                        }
+                                    </td>
+                                    <td>@word.English</td>
+                                    <td>@word.Bengali</td>
+                                    <td>
+                                        <span class="badge bg-secondary">
+                                            @word.Level
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="d-flex gap-2">
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-primary"
+                                                    @onclick="() => EditWord(word)">
+                                                Edit
+                                            </button>
+
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-danger"
+                                                    @onclick="() => DeleteWord(word.Id)">
+                                                Delete
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<VocabularyWord> words = new();
+    private VocabularyWord formModel = new();
+
+    private string searchText = string.Empty;
+    private string selectedLevel = string.Empty;
+    private string errorMessage = string.Empty;
+    private string successMessage = string.Empty;
+
+    private bool isLoading = true;
+    private bool isSaving = false;
+
+    private List<VocabularyWord> FilteredWords =>
+        words.Where(w =>
+            (string.IsNullOrWhiteSpace(searchText) ||
+             (w.German ?? "").Contains(searchText,
+                 StringComparison.OrdinalIgnoreCase) ||
+             (w.English ?? "").Contains(searchText,
+                 StringComparison.OrdinalIgnoreCase) ||
+             (w.Bengali ?? "").Contains(searchText,
+                 StringComparison.OrdinalIgnoreCase))
+            &&
+            (string.IsNullOrWhiteSpace(selectedLevel) ||
+             w.Level == selectedLevel))
+        .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadWords();
+    }
+
+    private async Task LoadWords()
+    {
+        isLoading = true;
+        errorMessage = string.Empty;
+
+        try
+        {
+            words = await Db.VocabularyWords
+                .AsNoTracking()
+                .OrderBy(w => w.German)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Could not load vocabulary: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SaveWord()
+    {
+        if (isSaving)
+            return;
+
+        isSaving = true;
+        errorMessage = string.Empty;
+        successMessage = string.Empty;
+
+        try
+        {
+            if (formModel.Id == 0)
+            {
+                formModel.CreatedAt = DateTime.UtcNow;
+                Db.VocabularyWords.Add(formModel);
+                successMessage = "Vocabulary word added successfully.";
+            }
+            else
+            {
+                var existing = await Db.VocabularyWords
+                    .FirstOrDefaultAsync(w => w.Id == formModel.Id);
+
+                if (existing is null)
+                {
+                    errorMessage = "The word could not be found.";
+                    return;
+                }
+
+                existing.German = formModel.German;
+                existing.Article = formModel.Article;
+                existing.Plural = formModel.Plural;
+                existing.English = formModel.English;
+                existing.Bengali = formModel.Bengali;
+                existing.Example = formModel.Example;
+                existing.Level = formModel.Level;
+
+                successMessage = "Vocabulary word updated successfully.";
+            }
+
+            await Db.SaveChangesAsync();
+
+            formModel = new VocabularyWord();
+            await LoadWords();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Could not save vocabulary: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void EditWord(VocabularyWord word)
+    {
+        errorMessage = string.Empty;
+        successMessage = string.Empty;
+
+        formModel = new VocabularyWord
+        {
+            Id = word.Id,
+            German = word.German,
+            Article = word.Article,
+            Plural = word.Plural,
+            English = word.English,
+            Bengali = word.Bengali,
+            Example = word.Example,
+            Level = word.Level,
+            CreatedAt = word.CreatedAt,
+            NextReviewAt = word.NextReviewAt
+        };
+    }
+
+    private async Task DeleteWord(int id)
+    {
+        errorMessage = string.Empty;
+        successMessage = string.Empty;
+
+        try
+        {
+            var word = await Db.VocabularyWords
+                .FirstOrDefaultAsync(w => w.Id == id);
+
+            if (word is null)
+            {
+                errorMessage = "The word could not be found.";
+                return;
+            }
+
+            Db.VocabularyWords.Remove(word);
+            await Db.SaveChangesAsync();
+
+            if (formModel.Id == id)
+                formModel = new VocabularyWord();
+
+            successMessage = "Vocabulary word deleted successfully.";
+            await LoadWords();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Could not delete vocabulary: {ex.Message}";
+        }
+    }
+
+    private void ResetForm()
+    {
+        formModel = new VocabularyWord();
+        errorMessage = string.Empty;
+        successMessage = string.Empty;
+    }
+}
