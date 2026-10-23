@@ -31,5 +31,12 @@ namespace GermanLearningCompanion.Models
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         public DateTime? NextReviewAt { get; set; }
+
+        public DateTime? LastReviewedAt { get; set; }
+
+        public int ReviewCount { get; set; } = 0;
+
+        public int CorrectStreak { get; set; } = 0;
+
     }
 }

@@ -33,6 +33,9 @@ namespace GermanLearningCompanion.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("CorrectStreak")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
@@ -50,6 +53,9 @@ namespace GermanLearningCompanion.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("LastReviewedAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Level")
                         .IsRequired()
                         .HasMaxLength(10)
@@ -62,6 +68,9 @@ namespace GermanLearningCompanion.Migrations
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("ReviewCount")
+                        .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 

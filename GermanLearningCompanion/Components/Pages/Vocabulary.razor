@@ -4,7 +4,7 @@
 @using GermanLearningCompanion.Data
 @using Microsoft.EntityFrameworkCore
 
-@inject ApplicationDbContext Db
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 
 <PageTitle>Vocabulary | German Learning Companion</PageTitle>
 
@@ -266,7 +266,10 @@
 
         try
         {
-            words = await Db.VocabularyWords
+            await using var db =
+            await DbFactory.CreateDbContextAsync();
+
+            words = await db.VocabularyWords
                 .AsNoTracking()
                 .OrderBy(w => w.German)
                 .ToListAsync();
@@ -292,15 +295,17 @@
 
         try
         {
+            await using var db = await DbFactory.CreateDbContextAsync();
+
             if (formModel.Id == 0)
             {
                 formModel.CreatedAt = DateTime.UtcNow;
-                Db.VocabularyWords.Add(formModel);
+                db.VocabularyWords.Add(formModel);
                 successMessage = "Vocabulary word added successfully.";
             }
             else
             {
-                var existing = await Db.VocabularyWords
+                var existing = await db.VocabularyWords
                     .FirstOrDefaultAsync(w => w.Id == formModel.Id);
 
                 if (existing is null)
@@ -320,7 +325,7 @@
                 successMessage = "Vocabulary word updated successfully.";
             }
 
-            await Db.SaveChangesAsync();
+            await db.SaveChangesAsync();
 
             formModel = new VocabularyWord();
             await LoadWords();
@@ -362,7 +367,9 @@
 
         try
         {
-            var word = await Db.VocabularyWords
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            var word = await db.VocabularyWords
                 .FirstOrDefaultAsync(w => w.Id == id);
 
             if (word is null)
@@ -371,8 +378,8 @@
                 return;
             }
 
-            Db.VocabularyWords.Remove(word);
-            await Db.SaveChangesAsync();
+            db.VocabularyWords.Remove(word);
+            await db.SaveChangesAsync();
 
             if (formModel.Id == id)
                 formModel = new VocabularyWord();

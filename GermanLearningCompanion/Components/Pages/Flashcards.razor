@@ -1,5 +1,789 @@
-﻿<h3>Flashcards</h3>
+﻿@page "/flashcards"
+
+@using GermanLearningCompanion.Data
+@using GermanLearningCompanion.Models
+@using Microsoft.EntityFrameworkCore
+
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+
+<PageTitle>Flashcards - German Learning</PageTitle>
+
+<div class="flash-page">
+    <div class="flash-header">
+        <div>
+            <h1>German Flashcards</h1>
+            <p>Practice your vocabulary, one word at a time.</p>
+        </div>
+
+        <button class="secondary-btn"
+                @onclick="ResetSession">
+            Reset progress
+        </button>
+    </div>
+    <div class="flash-toolbar">
+        <label for="reviewMode">Study mode</label>
+
+        <select id="reviewMode"
+                value="@selectedReviewMode"
+                @onchange="OnReviewModeChanged">
+            <option value="Due">Daily review (due words)</option>
+            <option value="All">All words</option>
+        </select>
+
+        <label for="levelFilter">German level</label>
+
+        <select id="levelFilter"
+                value="@selectedLevel"
+                @onchange="OnLevelChanged">
+            <option value="All">All levels</option>
+            <option value="A1">A1 - Beginner</option>
+            <option value="A2">A2 - Elementary</option>
+            <option value="B1">B1 - Intermediate</option>
+            <option value="B2">B2 - Upper intermediate</option>
+        </select>
+
+        <button class="secondary-btn"
+                @onclick="ShuffleCards"
+                disabled="@(cards.Count < 2)">
+            Shuffle
+        </button>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="status-message">Loading your vocabulary...</div>
+    }
+    else if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="error-message">@errorMessage</div>
+        <button class="primary-btn" @onclick="LoadWords">
+            Try again
+        </button>
+    }
+    else if (cards.Count == 0)
+    {
+        <div class="empty-state">
+            <h3>No vocabulary found</h3>
+            <p>
+                Add some words on the Vocabulary page to start
+                practicing your German.
+            </p>
+            <a href="/vocabulary" class="primary-btn">
+                Add vocabulary
+            </a>
+        </div>
+    }
+    else
+    {
+        <div class="progress-section">
+            <div class="progress-labels">
+                <span>Card @(currentIndex + 1) of @cards.Count</span>
+                <span>@ProgressPercentage% completed</span>
+            </div>
+
+            <div class="progress-track">
+                <div class="progress-fill"
+                     style="width: @(ProgressPercentage)%">
+                </div>
+            </div>
+        </div>
+
+        <button type="button"
+                class="flash-card @(isFlipped ? "flipped" : "")"
+                @onclick="FlipCard"
+                aria-label="Flip vocabulary card">
+            @if (!isFlipped)
+            {
+                <div class="card-content">
+                    <span class="card-label">GERMAN</span>
+
+                    <span class="german-word">
+                        @if (!string.IsNullOrWhiteSpace(CurrentWord.Article))
+                        {
+                            @CurrentWord.Article
+                        }
+                        @CurrentWord.German
+                    </span>
+
+                    @if (!string.IsNullOrWhiteSpace(CurrentWord.Plural))
+                    {
+                        <span class="plural-text">
+                            Plural: @CurrentWord.Plural
+                        </span>
+                    }
+
+                    <span class="flip-hint">
+                        Tap the card to reveal the answer
+                    </span>
+                </div>
+            }
+            else
+            {
+                <div class="card-content">
+                    <span class="card-label">MEANING</span>
+
+                    <span class="translation">
+                        @CurrentWord.English
+                    </span>
+
+                    @if (!string.IsNullOrWhiteSpace(CurrentWord.Bengali))
+                    {
+                        <span class="bengali-text">
+                            @CurrentWord.Bengali
+                        </span>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(CurrentWord.Example))
+                    {
+                        <div class="example-box">
+                            <strong>Example</strong>
+                            <p>@CurrentWord.Example</p>
+                        </div>
+                    }
+
+                    <span class="level-badge">
+                        @CurrentWord.Level
+                    </span>
+                </div>
+            }
+        </button>
+
+        <div class="study-actions">
+            <button class="practice-btn"
+                    @onclick="MarkForPractice">
+                <span>✕</span>
+                Need practice
+            </button>
+
+            <button class="known-btn"
+                    @onclick="MarkAsKnown">
+                <span>✓</span>
+                I know this
+            </button>
+        </div>
+
+        <div class="navigation-actions">
+            <button class="secondary-btn"
+                    @onclick="PreviousCard"
+                    disabled="@(currentIndex == 0)">
+                ← Previous
+            </button>
+
+            <button class="secondary-btn"
+                    @onclick="NextCard"
+                    disabled="@(currentIndex >= cards.Count - 1)">
+                Next →
+            </button>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <span class="stat-number">@knownIds.Count</span>
+                <span class="stat-label">Known</span>
+            </div>
+
+            <div class="stat-card">
+                <span class="stat-number">@practiceIds.Count</span>
+                <span class="stat-label">Need practice</span>
+            </div>
+
+            <div class="stat-card">
+                <span class="stat-number">@RemainingCount</span>
+                <span class="stat-label">Not reviewed</span>
+            </div>
+        </div>
+
+        @if (knownIds.Count + practiceIds.Count == cards.Count)
+        {
+            <div class="completion-message">
+                <h3>Session completed!</h3>
+                <p>
+                    Great work! You reviewed all @cards.Count cards
+                    in this session.
+                </p>
+                <button class="primary-btn" @onclick="ResetSession">
+                    Practice again
+                </button>
+            </div>
+        }
+    }
+</div>
+
+<style>
+    .flash-page {
+        max-width: 850px;
+        margin: 0 auto;
+        padding: 24px 16px 40px;
+        color: var(--bs-body-color, #172033);
+    }
+
+    .flash-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-bottom: 24px;
+    }
+
+    .flash-header h1 {
+        font-size: clamp(1.6rem, 4vw, 2rem);
+        font-weight: 750;
+        margin: 0 0 6px;
+    }
+
+    .flash-header p {
+        margin: 0;
+        color: var(--bs-secondary-color, #667085);
+    }
+
+    .flash-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 24px;
+    }
+
+    .flash-toolbar label {
+        font-weight: 600;
+    }
+
+    .flash-toolbar select {
+        flex: 1;
+        min-width: 160px;
+        max-width: 280px;
+        padding: 10px 12px;
+        border: 1px solid #d0d5dd;
+        border-radius: 10px;
+        background: var(--bs-body-bg, white);
+        color: var(--bs-body-color, #172033);
+    }
+
+    .progress-section {
+        margin-bottom: 18px;
+    }
+
+    .progress-labels {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        font-size: 0.9rem;
+        margin-bottom: 8px;
+    }
+
+    .progress-track {
+        height: 8px;
+        background: var(--bs-secondary-bg, #e9edf3);
+        border-radius: 99px;
+        overflow: hidden;
+    }
+
+    .progress-fill {
+        height: 100%;
+        background: #3b82f6;
+        border-radius: 99px;
+        transition: width 0.2s ease;
+    }
+
+    .flash-card {
+        display: flex;
+        width: 100%;
+        min-height: 310px;
+        padding: 28px;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        border: 1px solid var(--bs-border-color, #dfe4ec);
+        border-radius: 22px;
+        background: var(--bs-tertiary-bg, #f8faff);
+        color: var(--bs-body-color, #172033);
+        cursor: pointer;
+        box-shadow: 0 8px 24px rgb(16 24 40 / 7%);
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .flash-card:hover {
+        box-shadow: 0 12px 30px rgb(16 24 40 / 11%);
+    }
+
+    .flash-card:active {
+        transform: scale(0.995);
+    }
+
+    .flash-card.flipped {
+        background: var(--bs-body-bg, white);
+        border-color: #93c5fd;
+    }
+
+    .card-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+        width: 100%;
+    }
+
+    .card-label {
+        color: #3b82f6;
+        font-size: 0.78rem;
+        font-weight: 800;
+        letter-spacing: 2px;
+    }
+
+    .german-word {
+        font-size: clamp(2rem, 7vw, 3.2rem);
+        font-weight: 750;
+        overflow-wrap: anywhere;
+    }
+
+    .plural-text {
+        color: var(--bs-secondary-color, #667085);
+        font-size: 0.95rem;
+    }
+
+    .flip-hint {
+        margin-top: 18px;
+        color: var(--bs-secondary-color, #667085);
+        font-size: 0.9rem;
+    }
+
+    .translation {
+        font-size: clamp(1.5rem, 5vw, 2.2rem);
+        font-weight: 700;
+        overflow-wrap: anywhere;
+    }
+
+    .bengali-text {
+        font-size: 1.35rem;
+        line-height: 1.7;
+        overflow-wrap: anywhere;
+    }
+
+    .example-box {
+        max-width: 550px;
+        margin-top: 8px;
+        padding: 12px 16px;
+        border-radius: 12px;
+        background: var(--bs-secondary-bg, #f2f4f7);
+        text-align: left;
+        overflow-wrap: anywhere;
+    }
+
+    .example-box p {
+        margin: 5px 0 0;
+    }
+
+    .level-badge {
+        padding: 5px 12px;
+        border-radius: 99px;
+        background: #dbeafe;
+        color: #1d4ed8;
+        font-size: 0.85rem;
+        font-weight: 700;
+    }
+
+    .study-actions,
+    .navigation-actions {
+        display: flex;
+        justify-content: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: 18px;
+    }
+
+    .study-actions button,
+    .navigation-actions button,
+    .primary-btn,
+    .secondary-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-height: 44px;
+        padding: 10px 18px;
+        border-radius: 10px;
+        font-weight: 650;
+        cursor: pointer;
+        text-decoration: none;
+    }
+
+    .practice-btn {
+        color: #b42318;
+        background: #fff1f0;
+        border: 1px solid #fecdca;
+    }
+
+    .known-btn,
+    .primary-btn {
+        color: white;
+        background: #2563eb;
+        border: 1px solid #2563eb;
+    }
+
+    .secondary-btn {
+        color: var(--bs-body-color, #344054);
+        background: var(--bs-body-bg, white);
+        border: 1px solid var(--bs-border-color, #d0d5dd);
+    }
+
+    button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 28px;
+    }
+
+    .stat-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 5px;
+        padding: 18px 10px;
+        border: 1px solid var(--bs-border-color, #e4e7ec);
+        border-radius: 14px;
+        background: var(--bs-body-bg, white);
+        text-align: center;
+    }
+
+    .stat-number {
+        font-size: 1.6rem;
+        font-weight: 750;
+    }
+
+    .stat-label {
+        color: var(--bs-secondary-color, #667085);
+        font-size: 0.85rem;
+    }
+
+    .empty-state,
+    .completion-message {
+        padding: 28px 20px;
+        margin-top: 20px;
+        border-radius: 16px;
+        background: var(--bs-secondary-bg, #f8faff);
+        text-align: center;
+    }
+
+    .empty-state p,
+    .completion-message p {
+        margin: 10px 0 18px;
+    }
+
+    .status-message,
+    .error-message {
+        padding: 16px;
+        margin: 16px 0;
+        border-radius: 12px;
+    }
+
+    .status-message {
+        background: var(--bs-secondary-bg, #f2f4f7);
+    }
+
+    .error-message {
+        background: #fff1f0;
+        color: #b42318;
+    }
+
+    @@media (max-width: 480px) {
+        .flash-page {
+            padding: 16px 10px 28px;
+        }
+
+        .flash-card {
+            min-height: 280px;
+            padding: 20px 14px;
+        }
+
+        .study-actions,
+        .navigation-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .study-actions button,
+        .navigation-actions button {
+            padding: 10px 8px;
+        }
+
+        .stats-grid {
+            gap: 7px;
+        }
+
+        .stat-card {
+            padding: 14px 5px;
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+        }
+    }
+</style>
 
 @code {
+    private List<VocabularyWord> allWords = new();
+    private List<VocabularyWord> cards = new();
 
+    private readonly HashSet<int> knownIds = new();
+    private readonly HashSet<int> practiceIds = new();
+
+    private int currentIndex;
+    private bool isFlipped;
+    private bool isLoading;
+    private string selectedLevel = "All";
+    private string errorMessage = string.Empty;
+
+    private VocabularyWord CurrentWord => cards[currentIndex];
+
+    private int ProgressPercentage =>
+        cards.Count == 0
+            ? 0
+            : (int)Math.Round(
+                (double)(knownIds.Count + practiceIds.Count)
+                / cards.Count * 100);
+
+    private int RemainingCount =>
+        Math.Max(0, cards.Count - knownIds.Count - practiceIds.Count);
+
+    private string selectedReviewMode = "Due";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadWords();
+    }
+
+    private async Task LoadWords()
+    {
+        isLoading = true;
+        errorMessage = string.Empty;
+
+        try
+        {
+            await using var db =
+                await DbFactory.CreateDbContextAsync();
+
+            allWords = await db.VocabularyWords
+                .AsNoTracking()
+                .OrderBy(w => w.German)
+                .ToListAsync();
+
+            ApplyLevelFilter();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Could not load vocabulary: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    
+    private void ApplyLevelFilter()
+    {
+        var now = DateTime.UtcNow;
+
+        IEnumerable<VocabularyWord> query = allWords;
+
+        if (selectedReviewMode == "Due")
+        {
+            query = query.Where(w =>
+                w.NextReviewAt == null ||
+                w.NextReviewAt.Value <= now);
+        }
+
+        if (selectedLevel != "All")
+        {
+            query = query.Where(w => w.Level == selectedLevel);
+        }
+
+        cards = query
+            .OrderBy(w => w.NextReviewAt ?? DateTime.MinValue)
+            .ThenBy(w => w.German)
+            .ToList();
+
+        currentIndex = 0;
+        isFlipped = false;
+
+        var currentIds = cards.Select(w => w.Id).ToHashSet();
+        knownIds.IntersectWith(currentIds);
+        practiceIds.IntersectWith(currentIds);
+    }
+
+    private void OnReviewModeChanged(ChangeEventArgs args)
+    {
+        selectedReviewMode = args.Value?.ToString() ?? "Due";
+        ApplyLevelFilter();
+    }
+
+
+    private void OnLevelChanged(ChangeEventArgs args)
+    {
+        selectedLevel = args.Value?.ToString() ?? "All";
+        ApplyLevelFilter();
+    }
+
+    private void FlipCard()
+    {
+        isFlipped = !isFlipped;
+    }
+
+    private void PreviousCard()
+    {
+        if (currentIndex > 0)
+        {
+            currentIndex--;
+            isFlipped = false;
+        }
+    }
+
+    private void NextCard()
+    {
+        if (currentIndex < cards.Count - 1)
+        {
+            currentIndex++;
+            isFlipped = false;
+        }
+    }
+
+    
+    private async Task MarkAsKnown()
+    {
+        await SaveReviewResult(known: true);
+    }
+
+    private async Task MarkForPractice()
+    {
+        await SaveReviewResult(known: false);
+    }
+
+    private async Task SaveReviewResult(bool known)
+    {
+        if (cards.Count == 0)
+            return;
+
+        errorMessage = string.Empty;
+
+        var word = CurrentWord;
+        var reviewedAt = DateTime.UtcNow;
+
+        try
+        {
+            await using var db =
+                await DbFactory.CreateDbContextAsync();
+
+            var savedWord = await db.VocabularyWords
+                .FirstOrDefaultAsync(w => w.Id == word.Id);
+
+            if (savedWord is null)
+            {
+                errorMessage = "This vocabulary word could not be found.";
+                return;
+            }
+
+            savedWord.LastReviewedAt = reviewedAt;
+            savedWord.ReviewCount++;
+
+            if (known)
+            {
+                savedWord.CorrectStreak++;
+            }
+            else
+            {
+                savedWord.CorrectStreak = 0;
+            }
+
+            savedWord.NextReviewAt =
+                GetNextReviewDate(reviewedAt, savedWord.CorrectStreak);
+
+            await db.SaveChangesAsync();
+
+            // Update the in-memory card without reloading the deck.
+            word.LastReviewedAt = savedWord.LastReviewedAt;
+            word.ReviewCount = savedWord.ReviewCount;
+            word.CorrectStreak = savedWord.CorrectStreak;
+            word.NextReviewAt = savedWord.NextReviewAt;
+
+            if (known)
+            {
+                knownIds.Add(word.Id);
+                practiceIds.Remove(word.Id);
+            }
+            else
+            {
+                practiceIds.Add(word.Id);
+                knownIds.Remove(word.Id);
+            }
+
+            MoveToNextUnreviewedCard();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Could not save your review: {ex.Message}";
+        }
+    }
+
+    private static DateTime GetNextReviewDate(
+        DateTime reviewedAt,
+        int correctStreak)
+    {
+        int days = correctStreak switch
+        {
+            0 => 1,
+            1 => 1,
+            2 => 3,
+            3 => 7,
+            4 => 14,
+            _ => 30
+        };
+
+        return reviewedAt.AddDays(days);
+    }
+
+
+    private void MoveToNextUnreviewedCard()
+    {
+        isFlipped = false;
+
+        if (cards.Count == 0)
+            return;
+
+        // Find the next card that has not been rated in this session.
+        for (int offset = 1; offset <= cards.Count; offset++)
+        {
+            int candidate = (currentIndex + offset) % cards.Count;
+            int id = cards[candidate].Id;
+
+            if (!knownIds.Contains(id) && !practiceIds.Contains(id))
+            {
+                currentIndex = candidate;
+                return;
+            }
+        }
+
+        // All cards have been reviewed.
+        StateHasChanged();
+    }
+
+    private void ShuffleCards()
+    {
+        cards = cards.OrderBy(_ => Random.Shared.Next()).ToList();
+        currentIndex = 0;
+        isFlipped = false;
+    }
+
+    private void ResetSession()
+    {
+        knownIds.Clear();
+        practiceIds.Clear();
+        currentIndex = 0;
+        isFlipped = false;
+    }
 }

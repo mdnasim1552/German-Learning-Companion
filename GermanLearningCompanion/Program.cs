@@ -7,9 +7,11 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("SQLiteConnection")
-));
+
+builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
+    options.UseSqlite(
+        builder.Configuration.GetConnectionString("SQLiteConnection")
+    ));
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
